@@ -1,110 +1,80 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qantas SH Roster Pay Calculator</title>
+    <title>Qantas Daily 0.6 Pay Checker</title>
     <style>
-        body { font-family: -apple-system, sans-serif; line-height: 1.6; padding: 20px; max-width: 1000px; margin: auto; background: #f4f7f6; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h2 { color: #e21b22; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-        .settings { background: #fff5f5; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #ffcfcf; }
-        textarea { width: 100%; height: 200px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 13px; box-sizing: border-box; }
-        button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px; }
-        button:hover { background: #b1151a; }
-        table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-        th { background: #f8f9fa; color: #666; font-size: 12px; text-transform: uppercase; padding: 12px; text-align: left; border-bottom: 2px solid #eee; }
-        td { padding: 12px; border-bottom: 1px solid #eee; font-size: 14px; }
-        .row-paid-duty { background-color: #dcfce7 !important; border-left: 5px solid #22c55e; font-weight: bold; }
-        .row-near-miss { background-color: #fef9c3 !important; border-left: 5px solid #eab308; }
-        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
-        .bg-green { background: #22c55e; color: white; }
-        .bg-yellow { background: #eab308; color: white; }
+        body { font-family: sans-serif; padding: 20px; background: #f0f2f5; }
+        .card { background: white; padding: 25px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 900px; margin: auto; }
+        textarea { width: 100%; height: 200px; font-family: monospace; font-size: 12px; margin: 10px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #e21b22; color: white; font-size: 12px; }
+        .pay-06 { background-color: #dcfce7 !important; font-weight: bold; border-left: 5px solid #22c55e; }
+        .near-miss { background-color: #fef9c3 !important; border-left: 5px solid #eab308; }
+        .info { font-size: 0.9em; color: #666; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-
 <div class="card">
-    <h2>Roster Pay Identifier (0.6 Rule)</h2>
-    
-    <div class="settings">
-        <label><b>Near-Miss Threshold:</b> Within <span id="tVal">30</span> mins</label><br>
-        <input type="range" id="threshold" min="0" max="60" value="30" style="width:100%" oninput="document.getElementById('tVal').innerText=this.value">
-    </div>
-
-    <textarea id="input" placeholder="Paste your entire roster text here..."></textarea>
-    <button onclick="processRoster()">Analyze Roster</button>
-
-    <div id="results"></div>
+    <h2>Daily Roster Pay Identifier</h2>
+    <p class="info">Paste the top section of your roster (the part with "Date Duty(Role) Service...")</p>
+    <textarea id="rawInput" placeholder="Paste daily roster here..."></textarea>
+    <button onclick="processDaily()" style="width:100%; padding:15px; background:#e21b22; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">Analyze Daily Pay</button>
+    <div id="display"></div>
 </div>
 
 <script>
-function toMins(s) { 
-    if(!s || !s.includes(':')) return 0;
-    const [h, m] = s.split(':').map(Number);
+function timeToMins(t) {
+    if (!t || !t.includes(':')) return 0;
+    const [h, m] = t.split(':').map(Number);
     return (h * 60) + m;
 }
 
-function toTime(m) {
+function minsToTime(m) {
     const h = Math.floor(m / 60);
     const min = Math.round(m % 60);
-    return `${h}:${min.toString().padStart(2, '0')}`;
+    return h + ":" + min.toString().padStart(2, '0');
 }
 
-function processRoster() {
-    const text = document.getElementById('input').value;
+function processDaily() {
+    const text = document.getElementById('rawInput').value;
     const lines = text.split('\n');
-    let html = '<table><tr><th>Date</th><th>Rostered Duty</th><th>Credit Paid</th><th>0.6 Calculation</th><th>Result</th></tr>';
+    let html = '<table><tr><th>Date</th><th>Daily Duty</th><th>Daily Credit</th><th>0.6 x Duty</th><th>Status</th></tr>';
     
-    let currentDate = "Unknown";
-    let foundAny = false;
+    // Regex targets: Date (04 Sun) ... Duty (12:10) ... Credit (9:05)
+    // It looks for two H:MM strings separated by spaces at the end of the line
+    const dailyRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
     lines.forEach(line => {
-        // 1. Try to find a Date (e.g., "15Jan") at the start of a line
-        const dateMatch = line.match(/^(\d{2}[A-Z][a-z]{2})/);
-        if (dateMatch) currentDate = dateMatch[1];
-
-        // 2. Look for the Duty/Credit line (Must contain Rpt and Rls)
-        if (line.includes('Rpt') && line.includes('Rls')) {
-            const times = line.match(/\d{1,2}:\d{2}/g); // Finds all H:MM formats
+        const match = line.match(dailyRegex);
+        if (match) {
+            const date = match[1];
+            const dutyStr = match[2];
+            const credStr = match[3];
             
-            if (times && times.length >= 2) {
-                const dutyStr = times[times.length - 2];
-                const credStr = times[times.length - 1];
-                
-                const dMins = toMins(dutyStr);
-                const cMins = toMins(credStr);
-                const d60 = dMins * 0.6;
-                const diff = cMins - d60;
-                const threshold = parseInt(document.getElementById('threshold').value);
+            const dMins = timeToMins(dutyStr);
+            const cMins = timeToMins(credStr);
+            const calc06 = dMins * 0.6;
+            
+            const diff = cMins - calc06;
+            const is06Higher = calc06 > cMins;
+            const isNear = !is06Higher && diff <= 15; // 15 min threshold
 
-                let status = "Credit Paid";
-                let rowClass = "";
+            let rowClass = is06Higher ? 'pay-06' : (isNear ? 'near-miss' : '');
+            let status = is06Higher ? 'PAID 0.6 DUTY' : (isNear ? 'Near Miss (' + Math.round(diff) + 'm)' : 'Paid Credit');
 
-                if (d60 > cMins) {
-                    status = '<span class="badge bg-green">0.6 DUTY APPLIES</span>';
-                    rowClass = "row-paid-duty";
-                } else if (diff <= threshold) {
-                    status = `<span class="badge bg-yellow">NEAR MISS (${Math.round(diff)}m)</span>`;
-                    rowClass = "row-near-miss";
-                }
-
-                html += `<tr class="${rowClass}">
-                    <td>${currentDate}</td>
-                    <td>${dutyStr}</td>
-                    <td>${credStr}</td>
-                    <td>${toTime(d60)}</td>
-                    <td>${status}</td>
-                </tr>`;
-                foundAny = true;
-            }
+            html += `<tr class="${rowClass}">
+                <td>${date}</td>
+                <td>${dutyStr}</td>
+                <td>${credStr}</td>
+                <td>${minsToTime(calc06)}</td>
+                <td>${status}</td>
+            </tr>`;
         }
     });
 
-    html += '</table>';
-    document.getElementById('results').innerHTML = foundAny ? html : "<p style='color:red; margin-top:20px;'>No duty patterns found. Ensure you are pasting the full 'Pattern Details' text.</p>";
+    document.getElementById('display').innerHTML = html + '</table>';
 }
 </script>
-
 </body>
 </html>
