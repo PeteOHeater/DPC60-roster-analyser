@@ -118,6 +118,7 @@
             letter-spacing: 1px;
             padding: 12px;
             border-bottom: 1px solid #d2d2d7;
+            vertical-align: bottom;
         }
 
         td { 
@@ -197,7 +198,6 @@ function processRoster() {
     const text = document.getElementById('rosterInput').value;
     const lines = text.split('\n');
     rosterData = [];
-    // Adjusted regex slightly to ensure it captures correctly even without s-on focus
     const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
     lines.forEach((line, index) => {
@@ -227,7 +227,7 @@ function renderTable() {
         <th>New Duty</th>
         <th>New .6</th>
         <th>Extra Gross</th>
-        <th>Extra Net</th>
+        <th>Net After Tax</th>
     </tr>`;
 
     rosterData.forEach(row => {
@@ -271,7 +271,6 @@ function run(id) {
         
         const gross = (diff / 60) * rate;
         
-        // Target index 5 because s-on was removed (shifts columns left)
         const marginEl = document.getElementById(`in-${id}`).parentElement.parentElement.cells[5];
         marginEl.className = `${getMarginClass(row.credit, newD60)} mono`;
         marginEl.innerText = formatTime(Math.abs(row.credit - newD60));
