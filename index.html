@@ -16,8 +16,8 @@
         th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
         
         /* Highlighting Logic */
-        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; } /* DPC60 Active */
-        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } /* Simulation Active */
+        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; } /* DPC60 Active Rostered */
+        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } /* DPC60 Active Simulated */
         .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } /* Credit Active */
         
         .extra-gross { color: #000000 !important; font-weight: bold; } 
@@ -76,10 +76,11 @@ function processRoster() {
 function renderTable() {
     let html = `<table><tr><th>Date</th><th>S-On</th><th>Roster S-Off</th><th>Duty</th><th>Credit</th><th>.6 Duty</th><th>Margin</th><th>New S-Off</th><th>New Duty</th><th>New .6</th><th>Extra Gross</th><th>Extra Net</th></tr>`;
     rosterData.forEach(row => {
-        const isRed = row.margin <= 0.5;
+        const isRed = row.origD60 > row.credit;
+        const marginVal = Math.abs(row.credit - row.origD60);
         html += `<tr>
             <td>${row.date}</td><td>${row.sOn}</td><td>${row.origSOf}</td><td class="duty-col">${formatTime(row.origDuty)}</td><td>${formatTime(row.credit)}</td><td>${formatTime(row.origD60)}</td>
-            <td class="${isRed ? 'margin-red' : 'margin-amber'}">${formatTime(Math.max(0, row.margin))}</td>
+            <td class="${isRed ? 'margin-red' : 'margin-amber'}">${formatTime(marginVal)}</td>
             <td><input type="text" maxlength="4" class="adj-input" id="in-${row.id}" oninput="run(${row.id})" placeholder="HHMM"></td>
             <td id="d100-${row.id}">-</td><td id="d60-${row.id}">-</td><td id="gr-${row.id}" class="extra-gross">$0.00</td><td id="net-${row.id}" class="extra-net">$0.00</td>
         </tr>`;
@@ -110,17 +111,14 @@ function run(id) {
         
         // Dynamic Margin Highlighting for Simulation
         const marginEl = document.getElementById(`in-${id}`).parentElement.parentElement.cells[6];
-        const newMargin = row.credit - newD60;
+        const newMarginDiff = Math.abs(row.credit - newD60);
         
-        if (newMargin < 0) {
+        if (newD60 > row.credit) {
             marginEl.className = "margin-green";
-            marginEl.innerText = formatTime(Math.abs(newMargin));
-        } else if (newMargin <= 0.5) {
-            marginEl.className = "margin-red";
-            marginEl.innerText = "0:00";
+            marginEl.innerText = formatTime(newMarginDiff);
         } else {
             marginEl.className = "margin-amber";
-            marginEl.innerText = formatTime(newMargin);
+            marginEl.innerText = formatTime(newMarginDiff);
         }
 
         document.getElementById(`d100-${id}`).innerText = formatTime(newTotalDuty);
