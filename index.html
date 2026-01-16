@@ -1,106 +1,135 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Qantas DPC60 Margin Calculator</title>
+    <title>Qantas Pay Delay Simulator</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f0f2f5; color: #1a1a1a; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1100px; margin: auto; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1300px; margin: auto; }
         h2 { color: #e21b22; margin-top: 0; border-bottom: 2px solid #e21b22; padding-bottom: 10px; }
-        textarea { width: 100%; height: 200px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: "Courier New", monospace; box-sizing: border-box; font-size: 13px; }
-        .controls { background: #fff5f5; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffcfcf; }
-        button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; transition: background 0.2s; }
-        button:hover { background: #b1151a; }
-        table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; }
-        th, td { padding: 14px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
-        th { background: #f8f9fa; font-size: 11px; text-transform: uppercase; color: #555; letter-spacing: 0.05em; }
-        .exact-match { background-color: #dcfce7 !important; border-left: 5px solid #22c55e; }
-        .near-match { background-color: #fef9c3 !important; border-left: 5px solid #eab308; }
-        .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
+        .controls { display: flex; gap: 20px; background: #fff5f5; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffcfcf; align-items: center; }
+        .input-group { display: flex; flex-direction: column; }
+        input[type="number"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        textarea { width: 100%; height: 150px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: monospace; box-sizing: border-box; }
+        button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; font-size: 13px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; text-transform: uppercase; color: #555; }
+        .adj-input { width: 60px; padding: 5px; border: 1px solid #e21b22; border-radius: 4px; font-weight: bold; text-align: center; }
+        .extra-pay { color: #22c55e; font-weight: bold; }
+        .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: bold; color: white; display: inline-block; }
         .bg-green { background: #22c55e; }
-        .bg-yellow { background: #eab308; }
         .bg-gray { background: #6b7280; }
-        .margin-info { font-family: monospace; font-weight: bold; color: #444; }
     </style>
 </head>
 <body>
 <div class="card">
-    <h2>Daily Pay & DPC60 Margin Identifier</h2>
+    <h2>DPC60 Delay & Pay Simulator</h2>
+    
     <div class="controls">
-        <label><b>"Near DPC60" Threshold (minutes):</b> <span id="tVal">30</span></label>
-        <input type="range" id="threshold" min="1" max="120" value="30" style="width:100%" oninput="document.getElementById('tVal').innerText=this.value">
+        <div class="input-group">
+            <label>Hourly Rate ($)</label>
+            <input type="number" id="hourlyRate" value="353">
+        </div>
+        <div class="input-group">
+            <label>Tax Rate (%)</label>
+            <input type="number" id="taxRate" value="47">
+        </div>
+        <p style="font-size: 0.8em; color: #666;">Enter new Sign-Off in 24hr format (e.g., 2030) in the red boxes to see pay impact.</p>
     </div>
-    <textarea id="rosterInput" placeholder="Paste the roster content here..."></textarea>
-    <button onclick="calculateDaily()">Analyze Pay Margins</button>
+
+    <textarea id="rosterInput" placeholder="Paste daily roster section here..."></textarea>
+    <button onclick="calculateDaily()">Analyze Roster</button>
     <div id="results"></div>
 </div>
 
 <script>
+let currentData = [];
+
 function toMins(s) {
     if (!s || !s.includes(':')) return 0;
     const [h, m] = s.split(':').map(Number);
     return (h * 60) + m;
 }
 
-function toTime(m) {
-    const isNeg = m < 0;
+function minsToTime(m) {
     const absM = Math.abs(Math.round(m));
-    const hrs = Math.floor(absM / 60);
-    const mins = absM % 60;
-    return (isNeg ? "-" : "") + hrs + ":" + mins.toString().padStart(2, '0');
+    return Math.floor(absM / 60) + ":" + (absM % 60).toString().padStart(2, '0');
 }
 
 function calculateDaily() {
     const text = document.getElementById('rosterInput').value;
-    const threshold = parseInt(document.getElementById('threshold').value);
     const lines = text.split('\n');
-    let html = '<table><tr><th>Date</th><th>Daily Duty</th><th>Daily Credit</th><th>0.6 x Duty</th><th>Status Label</th><th>Margin to DPC60</th></tr>';
+    currentData = [];
     
-    // Pattern to find: Date | Junk | Duty(H:MM) | Credit(H:MM)
-    const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
+    // Pattern: Date | Junk | S-On | S-Off | Duty | Credit
+    const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
-    lines.forEach(line => {
+    lines.forEach((line, index) => {
         const match = line.match(lineRegex);
         if (match) {
-            const date = match[1];
-            const dutyStr = match[2];
-            const credStr = match[3];
-            const dutyMins = toMins(dutyStr);
-            const creditMins = toMins(credStr);
-            const dpc60 = dutyMins * 0.6;
-            
-            // The "buffer" or "margin": How much higher Credit is than 0.6 Duty
-            const marginMins = creditMins - dpc60;
-            
-            let label = '<span class="badge bg-gray">Credit Paid</span>';
-            let rowClass = "";
-
-            // 1. Check if they are rounded equal
-            if (Math.abs(Math.round(dpc60) - creditMins) <= 0.5) {
-                label = '<span class="badge bg-green">DPC60 = Credit Hours</span>';
-                rowClass = "exact-match";
-            } 
-            // 2. Check if DPC60 is actually higher
-            else if (dpc60 > creditMins) {
-                label = '<span class="badge bg-green">DPC60 Paid</span>';
-                rowClass = "exact-match";
-            }
-            // 3. Check if it's within the "Near" threshold
-            else if (marginMins <= threshold) {
-                label = '<span class="badge bg-yellow">Near DPC60</span>';
-                rowClass = "near-match";
-            }
-
-            html += `<tr class="${rowClass}">
-                <td>${date}</td>
-                <td>${dutyStr}</td>
-                <td>${credStr}</td>
-                <td>${toTime(dpc60)}</td>
-                <td>${label}</td>
-                <td class="margin-info">${marginMins > 0 ? "+" + toTime(marginMins) : toTime(marginMins)}</td>
-            </tr>`;
+            currentData.push({
+                id: index,
+                date: match[1],
+                sOn: match[2],
+                origSOf: match[3],
+                origDuty: match[4],
+                credit: match[5]
+            });
         }
     });
-    document.getElementById('results').innerHTML = html + '</table>';
+    renderTable();
+}
+
+function renderTable() {
+    const hourly = parseFloat(document.getElementById('hourlyRate').value);
+    const tax = parseFloat(document.getElementById('taxRate').value) / 100;
+    
+    let html = `<table><tr>
+        <th>Date</th><th>S-On</th><th>Orig S-Off</th><th>Credit</th><th>0.6 Duty</th><th>Margin</th>
+        <th>New Sign-Off</th><th>New 0.6 Duty</th><th>Extra (Gross)</th><th>Extra (Net)</th>
+    </tr>`;
+
+    currentData.forEach(row => {
+        const dpc60Orig = toMins(row.origDuty) * 0.6;
+        const margin = toMins(row.credit) - dpc60Orig;
+        
+        // Check for adjusted values
+        const adjInput = document.getElementById(`adj-${row.id}`);
+        const newSOf = adjInput ? adjInput.value : "";
+        
+        let extraGross = 0;
+        let newDpc60Str = "-";
+
+        if (newSOf && newSOf.length === 4) {
+            const sOnMin = (parseInt(row.sOn.substring(0,2)) * 60) + parseInt(row.sOn.substring(2));
+            let sOffMin = (parseInt(newSOf.substring(0,2)) * 60) + parseInt(newSOf.substring(2));
+            if (sOffMin < sOnMin) sOffMin += 1440; // Next day
+            
+            const newDuty = sOffMin - sOnMin;
+            const newDpc60 = newDuty * 0.6;
+            newDpc60Str = minsToTime(newDpc60);
+            
+            const originalPaidMins = Math.max(toMins(row.credit), dpc60Orig);
+            const newPaidMins = Math.max(toMins(row.credit), newDpc60);
+            
+            extraGross = ((newPaidMins - originalPaidMins) / 60) * hourly;
+        }
+
+        html += `<tr>
+            <td>${row.date}</td>
+            <td>${row.sOn}</td>
+            <td>${row.origSOf}</td>
+            <td>${row.credit}</td>
+            <td>${minsToTime(dpc60Orig)}</td>
+            <td>${margin > 0 ? "+" + minsToTime(margin) : "0:00"}</td>
+            <td><input type="text" id="adj-${row.id}" class="adj-input" placeholder="----" value="${newSOf}" oninput="renderTable()"></td>
+            <td>${newDpc60Str}</td>
+            <td class="extra-pay">$${extraGross.toFixed(2)}</td>
+            <td class="extra-pay">$${(extraGross * (1 - tax)).toFixed(2)}</td>
+        </tr>`;
+    });
+
+    document.getElementById('results').innerHTML = html + "</table>";
 }
 </script>
 </body>
