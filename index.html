@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Qantas DPC60 Simulator - Delta Logic</title>
+    <title>DPC 60 Roster Analyser</title>
     <style>
         body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1600px; margin: auto; }
@@ -14,23 +14,24 @@
         table { width: 100%; border-collapse: collapse; margin-top: 25px; font-size: 12px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
         th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
-        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; } 
-        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } 
+        
+        /* Highlighting Logic */
+        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; } /* DPC60 Active */
+        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } /* Simulation Active */
+        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } /* Credit Active */
+        
         .extra-gross { color: #000000 !important; font-weight: bold; } 
         .extra-net { color: #16a34a !important; font-weight: bold; }   
         .adj-input { width: 65px; padding: 6px; border: 2px solid #e21b22; border-radius: 4px; font-weight: bold; text-align: center; }
+        .duty-col { color: #4b5563; font-style: italic; }
     </style>
 </head>
 <body>
 <div class="card">
-    <h2>DPC60 Simulator: Delta-Based Calculation</h2>
+    <h2>DPC 60 Roster Analyser</h2>
     <div class="controls">
         <div class="input-group"><label>Hourly Rate ($)</label><input type="number" id="hourlyRate" value="353" oninput="updateAll()"></div>
         <div class="input-group"><label>Tax Rate (%)</label><input type="number" id="taxRate" value="47" oninput="updateAll()"></div>
-        <div style="flex-grow: 1; font-size: 0.85em; color: #666;">
-            <b>Updated Logic:</b> New Duty = Rostered Duty + (New Sign Off - Original Sign Off). <br>
-            This preserves the pre/post flight buffers built into your rostered duty hours.
-        </div>
     </div>
     <textarea id="rosterInput" placeholder="Paste daily roster here..."></textarea>
     <button onclick="processRoster()">Process Roster</button>
@@ -55,7 +56,6 @@ function processRoster() {
     const text = document.getElementById('rosterInput').value;
     const lines = text.split('\n');
     rosterData = [];
-    // Date, S-On, S-Of, Duty, Credit
     const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
     lines.forEach((line, index) => {
@@ -74,11 +74,11 @@ function processRoster() {
 }
 
 function renderTable() {
-    let html = `<table><tr><th>Date</th><th>S-On</th><th>Roster S-Off</th><th>100% Duty</th><th>Credit</th><th>0.6 Duty</th><th>Margin</th><th>New S-Off (24hr)</th><th>New 100%</th><th>New 0.6</th><th>Extra Gross</th><th>Extra Net</th></tr>`;
+    let html = `<table><tr><th>Date</th><th>S-On</th><th>Roster S-Off</th><th>Duty</th><th>Credit</th><th>.6 Duty</th><th>Margin</th><th>New S-Off</th><th>New Duty</th><th>New .6</th><th>Extra Gross</th><th>Extra Net</th></tr>`;
     rosterData.forEach(row => {
         const isRed = row.margin <= 0.5;
         html += `<tr>
-            <td>${row.date}</td><td>${row.sOn}</td><td>${row.origSOf}</td><td>${formatTime(row.origDuty)}</td><td>${formatTime(row.credit)}</td><td>${formatTime(row.origD60)}</td>
+            <td>${row.date}</td><td>${row.sOn}</td><td>${row.origSOf}</td><td class="duty-col">${formatTime(row.origDuty)}</td><td>${formatTime(row.credit)}</td><td>${formatTime(row.origD60)}</td>
             <td class="${isRed ? 'margin-red' : 'margin-amber'}">${formatTime(Math.max(0, row.margin))}</td>
             <td><input type="text" maxlength="4" class="adj-input" id="in-${row.id}" oninput="run(${row.id})" placeholder="HHMM"></td>
             <td id="d100-${row.id}">-</td><td id="d60-${row.id}">-</td><td id="gr-${row.id}" class="extra-gross">$0.00</td><td id="net-${row.id}" class="extra-net">$0.00</td>
@@ -94,11 +94,8 @@ function run(id) {
     const tax = (parseFloat(document.getElementById('taxRate').value) || 0) / 100;
 
     if (val.length === 4) {
-        // Calculate the difference between New Sign Off and Original Sign Off
         const origSOfMins = (parseInt(row.origSOf.substring(0,2)) * 60) + parseInt(row.origSOf.substring(2));
         let newSOfMins = (parseInt(val.substring(0,2)) * 60) + parseInt(val.substring(2));
-        
-        // Handle next-day crossing for the delta
         if (newSOfMins < origSOfMins - 600) newSOfMins += 1440; 
         
         const delta = newSOfMins - origSOfMins;
@@ -110,6 +107,22 @@ function run(id) {
         const diff = Math.max(0, simulatedPay - baselinePay);
         
         const gross = (diff / 60) * rate;
+        
+        // Dynamic Margin Highlighting for Simulation
+        const marginEl = document.getElementById(`in-${id}`).parentElement.parentElement.cells[6];
+        const newMargin = row.credit - newD60;
+        
+        if (newMargin < 0) {
+            marginEl.className = "margin-green";
+            marginEl.innerText = formatTime(Math.abs(newMargin));
+        } else if (newMargin <= 0.5) {
+            marginEl.className = "margin-red";
+            marginEl.innerText = "0:00";
+        } else {
+            marginEl.className = "margin-amber";
+            marginEl.innerText = formatTime(newMargin);
+        }
+
         document.getElementById(`d100-${id}`).innerText = formatTime(newTotalDuty);
         document.getElementById(`d60-${id}`).innerText = formatTime(newD60);
         document.getElementById(`gr-${id}`).innerText = "$" + gross.toFixed(2);
