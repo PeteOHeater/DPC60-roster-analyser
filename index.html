@@ -3,33 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qantas SH Pay Calculator</title>
+    <title>Qantas SH Pay Calculator - Threshold Edition</title>
     <style>
-        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 900px; margin: auto; background: #f4f4f4; }
-        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        textarea { width: 100%; height: 200px; margin-bottom: 10px; font-family: monospace; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #e21b22; color: white; }
-        .highlight { background-color: #d4edda; font-weight: bold; }
-        .duty-pay { color: #856404; background-color: #fff3cd; }
+        body { font-family: -apple-system, sans-serif; line-height: 1.6; padding: 20px; max-width: 1000px; margin: auto; background: #f0f2f5; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        .controls { background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd; }
+        textarea { width: 100%; height: 150px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-family: monospace; box-sizing: border-box; }
+        button { background: #e21b22; color: white; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        
+        /* Highlighting Logic */
+        .pay-trigger { background-color: #d4edda !important; font-weight: bold; border-left: 5px solid #28a745; } /* Paid 0.6 Duty */
+        .near-miss { background-color: #fff3cd !important; border-left: 5px solid #ffc107; } /* Close to threshold */
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 25px; }
+        th, td { border-bottom: 1px solid #eee; padding: 12px; text-align: left; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+        .badge-warn { background: #ffc107; color: #856404; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Crew Roster Pay Identifier</h2>
-        <p>Paste your roster text (e.g., webCisRoster content) below:</p>
-        <textarea id="rosterInput" placeholder="Paste roster text here..."></textarea>
+        <h2>Roster Pay Identifier (DPC60 Rule)</h2>
+        
+        <div class="controls">
+            <label for="thresholdRange"><b>Alert Threshold:</b> Within <span id="thresholdVal">30</span> minutes</label><br>
+            <input type="range" id="thresholdRange" min="0" max="120" value="30" oninput="updateThresholdLabel(this.value)">
+            <p style="font-size: 0.8em; color: #666;">Highlights patterns where the 0.6 Duty is almost enough to override your Credit.</p>
+        </div>
+
+        <textarea id="rosterInput" placeholder="Paste roster content here..."></textarea>
         <button onclick="calculatePay()">Analyze Roster</button>
 
         <div id="results"></div>
     </div>
 
     <script>
+        function updateThresholdLabel(val) {
+            document.getElementById('thresholdVal').innerText = val;
+        }
+
         function timeToMinutes(timeStr) {
-            if (!timeStr) return 0;
-            const [hrs, mins] = timeStr.split(':').map(Number);
-            return (hrs * 60) + mins;
+            if (!timeStr || !timeStr.includes(':')) return 0;
+            const parts = timeStr.trim().split(':');
+            return (parseInt(parts[0]) * 60) + parseInt(parts[1]);
         }
 
         function minutesToTime(totalMin) {
@@ -40,40 +56,49 @@
 
         function calculatePay() {
             const text = document.getElementById('rosterInput').value;
+            const threshold = parseInt(document.getElementById('thresholdRange').value);
             const lines = text.split('\n');
-            let output = '<table><tr><th>Date</th><th>Duty (H:M)</th><th>Roster Credit</th><th>0.6 x Duty</th><th>Status</th></tr>';
-
-            // Regex to find patterns with Duty and Credit
-            // Look for lines that contain a time format like "12:10   9:05"
-            const patternRegex = /(\d{2}[A-Z][a-z]{2})\s+.*?\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
+            let rows = '';
 
             lines.forEach(line => {
-                const match = line.match(patternRegex);
-                if (match) {
-                    const date = match[1];
-                    const dutyStr = match[2];
-                    const creditStr = match[3];
+                if (line.includes('Rpt') && line.includes('Rls')) {
+                    const times = line.match(/\d{1,2}:\d{2}/g);
+                    if (times && times.length >= 2) {
+                        const dutyStr = times[times.length - 2];
+                        const creditStr = times[times.length - 1];
 
-                    const dutyMin = timeToMinutes(dutyStr);
-                    const creditMin = timeToMinutes(creditStr);
-                    const dutyPointSix = dutyMin * 0.6;
+                        const dutyMin = timeToMinutes(dutyStr);
+                        const creditMin = timeToMinutes(creditStr);
+                        const dutyPointSix = dutyMin * 0.6;
 
-                    const isDutyHigher = dutyPointSix > creditMin;
-                    const rowClass = isDutyHigher ? 'class="duty-pay"' : '';
-                    const status = isDutyHigher ? 'Paid 0.6 Duty' : 'Paid Credit';
+                        // Difference calculation
+                        const diff = Math.abs(creditMin - dutyPointSix);
+                        const isDutyHigher = dutyPointSix > creditMin;
+                        const isClose = !isDutyHigher && diff <= threshold;
 
-                    output += `<tr ${rowClass}>
-                        <td>${date}</td>
-                        <td>${dutyStr}</td>
-                        <td>${creditStr}</td>
-                        <td>${minutesToTime(dutyPointSix)}</td>
-                        <td>${status}</td>
-                    </tr>`;
+                        let rowClass = '';
+                        let status = 'Paid Credit';
+                        
+                        if (isDutyHigher) {
+                            rowClass = 'pay-trigger';
+                            status = 'PAID 0.6 DUTY';
+                        } else if (isClose) {
+                            rowClass = 'near-miss';
+                            status = `<span class="badge badge-warn">NEAR MISS (${Math.round(diff)}m off)</span>`;
+                        }
+
+                        rows += `<tr class="${rowClass}">
+                            <td>Duty Period</td>
+                            <td>${dutyStr}</td>
+                            <td>${creditStr}</td>
+                            <td>${minutesToTime(dutyPointSix)}</td>
+                            <td>${status}</td>
+                        </tr>`;
+                    }
                 }
             });
 
-            output += '</table>';
-            document.getElementById('results').innerHTML = output;
+            document.getElementById('results').innerHTML = rows ? `<table><tr><th>Type</th><th>Duty</th><th>Roster Credit</th><th>0.6 x Duty</th><th>Status</th></tr>${rows}</table>` : "<p>No data found.</p>";
         }
     </script>
 </body>
