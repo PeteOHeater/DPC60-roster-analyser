@@ -16,9 +16,9 @@
         th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
         
         /* Highlighting Logic */
-        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; } /* DPC60 Active Rostered */
-        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } /* DPC60 Active Simulated */
-        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } /* Credit Active */
+        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } /* Margin is 0 */
+        .margin-blue { background-color: #dbeafe !important; color: #1e40af !important; font-weight: bold; }  /* Credit < .6 Duty */
+        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } /* Credit > .6 Duty */
         
         .extra-gross { color: #000000 !important; font-weight: bold; } 
         .extra-net { color: #16a34a !important; font-weight: bold; }   
@@ -52,6 +52,14 @@ function formatTime(m) {
     return Math.floor(mins / 60) + ":" + (mins % 60).toString().padStart(2, '0');
 }
 
+function getMarginClass(credit, d60) {
+    const diff = credit - d60;
+    // Using a 0.5 minute threshold for floating point rounding
+    if (Math.abs(diff) <= 0.5) return "margin-green";
+    if (credit < d60) return "margin-blue";
+    return "margin-amber";
+}
+
 function processRoster() {
     const text = document.getElementById('rosterInput').value;
     const lines = text.split('\n');
@@ -66,7 +74,7 @@ function processRoster() {
             const d60 = dutyMins * 0.6;
             rosterData.push({
                 id: index, date: match[1], sOn: match[2], origSOf: match[3],
-                origDuty: dutyMins, credit: credMins, origD60: d60, margin: credMins - d60
+                origDuty: dutyMins, credit: credMins, origD60: d60
             });
         }
     });
@@ -76,11 +84,11 @@ function processRoster() {
 function renderTable() {
     let html = `<table><tr><th>Date</th><th>S-On</th><th>Roster S-Off</th><th>Duty</th><th>Credit</th><th>.6 Duty</th><th>Margin</th><th>New S-Off</th><th>New Duty</th><th>New .6</th><th>Extra Gross</th><th>Extra Net</th></tr>`;
     rosterData.forEach(row => {
-        const isRed = row.origD60 > row.credit;
+        const mClass = getMarginClass(row.credit, row.origD60);
         const marginVal = Math.abs(row.credit - row.origD60);
         html += `<tr>
             <td>${row.date}</td><td>${row.sOn}</td><td>${row.origSOf}</td><td class="duty-col">${formatTime(row.origDuty)}</td><td>${formatTime(row.credit)}</td><td>${formatTime(row.origD60)}</td>
-            <td class="${isRed ? 'margin-red' : 'margin-amber'}">${formatTime(marginVal)}</td>
+            <td class="${mClass}">${formatTime(marginVal)}</td>
             <td><input type="text" maxlength="4" class="adj-input" id="in-${row.id}" oninput="run(${row.id})" placeholder="HHMM"></td>
             <td id="d100-${row.id}">-</td><td id="d60-${row.id}">-</td><td id="gr-${row.id}" class="extra-gross">$0.00</td><td id="net-${row.id}" class="extra-net">$0.00</td>
         </tr>`;
@@ -109,17 +117,10 @@ function run(id) {
         
         const gross = (diff / 60) * rate;
         
-        // Dynamic Margin Highlighting for Simulation
+        // Update Margin Highlighting for Simulation
         const marginEl = document.getElementById(`in-${id}`).parentElement.parentElement.cells[6];
-        const newMarginDiff = Math.abs(row.credit - newD60);
-        
-        if (newD60 > row.credit) {
-            marginEl.className = "margin-green";
-            marginEl.innerText = formatTime(newMarginDiff);
-        } else {
-            marginEl.className = "margin-amber";
-            marginEl.innerText = formatTime(newMarginDiff);
-        }
+        marginEl.className = getMarginClass(row.credit, newD60);
+        marginEl.innerText = formatTime(Math.abs(row.credit - newD60));
 
         document.getElementById(`d100-${id}`).innerText = formatTime(newTotalDuty);
         document.getElementById(`d60-${id}`).innerText = formatTime(newD60);
