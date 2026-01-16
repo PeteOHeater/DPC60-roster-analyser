@@ -1,184 +1,118 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Qantas Pay Simulator - Fixed Math & Red Margin</title>
+    <title>Qantas DPC60 Master Simulator</title>
     <style>
-        body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1550px; margin: auto; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f0f2f5; color: #1a1a1a; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1600px; margin: auto; }
         h2 { color: #e21b22; margin-top: 0; border-bottom: 2px solid #e21b22; padding-bottom: 10px; }
-        
         .controls { display: flex; gap: 20px; background: #fff5f5; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffcfcf; align-items: center; }
         .input-group { display: flex; flex-direction: column; }
         input[type="number"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        
         textarea { width: 100%; height: 100px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: monospace; box-sizing: border-box; }
         button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px; }
-        
         table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; font-size: 12px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
         th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
-
-        /* Updated Margin Highlighting */
-        .margin-red { background-color: #fecaca !important; color: #b91c1c !important; font-weight: bold; } /* Margin 0 */
-        .margin-amber { background-color: #fef3c7 !important; font-weight: bold; } /* Margin > 0 */
-        
+        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; border: 1px solid #fecaca; } 
+        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } 
         .extra-gross { color: #000000 !important; font-weight: bold; } 
-        .extra-net { color: #22c55e !important; font-weight: bold; }   
-        
-        .adj-input { width: 60px; padding: 5px; border: 2px solid #e21b22; border-radius: 4px; font-weight: bold; text-align: center; }
-        .duty-total { color: #4b5563; font-style: italic; }
+        .extra-net { color: #16a34a !important; font-weight: bold; }   
+        .adj-input { width: 65px; padding: 6px; border: 2px solid #e21b22; border-radius: 4px; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
 <div class="card">
-    <h2>DPC60 Simulator: Fixed Logic</h2>
-    
+    <h2>DPC60 Master Simulator</h2>
     <div class="controls">
-        <div class="input-group">
-            <label>Hourly Rate ($)</label>
-            <input type="number" id="hourlyRate" value="353" oninput="updateAll()">
-        </div>
-        <div class="input-group">
-            <label>Tax Rate (%)</label>
-            <input type="number" id="taxRate" value="47" oninput="updateAll()">
-        </div>
+        <div class="input-group"><label>Hourly Rate ($)</label><input type="number" id="hourlyRate" value="353" oninput="updateAll()"></div>
+        <div class="input-group"><label>Tax Rate (%)</label><input type="number" id="taxRate" value="47" oninput="updateAll()"></div>
         <div style="flex-grow: 1; font-size: 0.85em; color: #666;">
-            <b>Logic Fix:</b> Pay now triggers if (New Duty x 0.6) is <i>greater than</i> current paid credit.<br>
-            <b>Margin:</b> <span style="color: #b91c1c; font-weight:bold;">Red</span> = DPC60 is active. <span style="color: #92400e; font-weight:bold;">Amber</span> = Credit is active.
+            <b>Math Logic:</b> New Duty = (New Sign Off - Sign On). <br>
+            <b>Pay Trigger:</b> Extra Pay = Max(Credit, New Duty * 0.6) - Max(Credit, Rostered Duty * 0.6).
         </div>
     </div>
-
-    <textarea id="rosterInput" placeholder="Paste daily roster text here..."></textarea>
-    <button onclick="processRoster()">Analyze Roster</button>
-    
+    <textarea id="rosterInput" placeholder="Paste daily roster here..."></textarea>
+    <button onclick="processRoster()">Process Roster</button>
     <div id="tableContainer"></div>
 </div>
 
 <script>
 let rosterData = [];
 
-function toMins(s) {
+function parseTime(s) {
     if (!s || !s.includes(':')) return 0;
     const [h, m] = s.split(':').map(Number);
     return (h * 60) + m;
 }
 
-function minsToTime(m) {
-    const absM = Math.max(0, Math.round(m));
-    return Math.floor(absM / 60) + ":" + (absM % 60).toString().padStart(2, '0');
+function formatTime(m) {
+    const mins = Math.max(0, Math.round(m));
+    return Math.floor(mins / 60) + ":" + (mins % 60).toString().padStart(2, '0');
 }
 
 function processRoster() {
     const text = document.getElementById('rosterInput').value;
     const lines = text.split('\n');
     rosterData = [];
-    
     const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
     lines.forEach((line, index) => {
         const match = line.match(lineRegex);
         if (match) {
-            const dutyMins = toMins(match[4]);
-            const credMins = toMins(match[5]);
+            const dutyMins = parseTime(match[4]);
+            const credMins = parseTime(match[5]);
             const d60 = dutyMins * 0.6;
-            
-            // Margin is Credit minus the 0.6 rule. If negative or 0, 0.6 rule is paying.
-            const margin = credMins - d60;
-
             rosterData.push({
-                id: index,
-                date: match[1],
-                sOn: match[2],
-                origSOf: match[3],
-                origDutyMins: dutyMins,
-                creditMins: credMins,
-                origD60: d60,
-                margin: margin
+                id: index, date: match[1], sOn: match[2], origSOf: match[3],
+                origDuty: dutyMins, credit: credMins, origD60: d60, margin: credMins - d60
             });
         }
     });
-    renderFullTable();
+    renderTable();
 }
 
-function renderFullTable() {
-    let html = `<table><tr>
-        <th>Date</th><th>S-On</th><th>Roster S-Off</th><th>100% Duty</th><th>Credit</th><th>0.6 Duty</th><th>Margin</th>
-        <th>New S-Off</th><th>New 100% Duty</th><th>New 0.6 Duty</th><th>Extra (Gross)</th><th>Extra (Net)</th>
-    </tr>`;
-
+function renderTable() {
+    let html = `<table><tr><th>Date</th><th>S-On</th><th>Roster S-Off</th><th>100% Duty</th><th>Credit</th><th>0.6 Duty</th><th>Margin</th><th>New S-Off (24hr)</th><th>New 100%</th><th>New 0.6</th><th>Extra Gross</th><th>Extra Net</th></tr>`;
     rosterData.forEach(row => {
-        // Red if Margin is 0 or less. Amber if positive.
-        let marginClass = row.margin <= 0.1 ? "margin-red" : "margin-amber";
-        
+        const isRed = row.margin <= 0.5;
         html += `<tr>
-            <td>${row.date}</td>
-            <td>${row.sOn}</td>
-            <td>${row.origSOf}</td>
-            <td class="duty-total">${minsToTime(row.origDutyMins)}</td>
-            <td>${minsToTime(row.creditMins)}</td>
-            <td>${minsToTime(row.origD60)}</td>
-            <td class="${marginClass}">${minsToTime(Math.max(0, row.margin))}</td>
-            <td><input type="text" maxlength="4" class="adj-input" id="input-${row.id}" oninput="runSim(${row.id})" placeholder="----"></td>
-            <td id="new100-${row.id}">-</td>
-            <td id="newD60-${id = row.id}">-</td>
-            <td id="gross-${row.id}" class="extra-gross">$0.00</td>
-            <td id="net-${row.id}" class="extra-net">$0.00</td>
+            <td>${row.date}</td><td>${row.sOn}</td><td>${row.origSOf}</td><td>${formatTime(row.origDuty)}</td><td>${formatTime(row.credit)}</td><td>${formatTime(row.origD60)}</td>
+            <td class="${isRed ? 'margin-red' : 'margin-amber'}">${formatTime(Math.max(0, row.margin))}</td>
+            <td><input type="text" maxlength="4" class="adj-input" id="in-${row.id}" oninput="run(${row.id})" placeholder="HHMM"></td>
+            <td id="d100-${row.id}">-</td><td id="d60-${row.id}">-</td><td id="gr-${row.id}" class="extra-gross">$0.00</td><td id="net-${row.id}" class="extra-net">$0.00</td>
         </tr>`;
     });
-
     document.getElementById('tableContainer').innerHTML = html + "</table>";
 }
 
-function runSim(id) {
+function run(id) {
     const row = rosterData.find(r => r.id === id);
-    const inputEl = document.getElementById(`input-${id}`);
-    const newSOfStr = inputEl.value;
-
-    const hourly = parseFloat(document.getElementById('hourlyRate').value) || 0;
+    const val = document.getElementById(`in-${id}`).value;
+    const rate = parseFloat(document.getElementById('hourlyRate').value) || 0;
     const tax = (parseFloat(document.getElementById('taxRate').value) || 0) / 100;
 
-    if (newSOfStr.length === 4) {
-        const sOnH = parseInt(row.sOn.substring(0,2));
-        const sOnM = parseInt(row.sOn.substring(2));
-        const sOnTotal = (sOnH * 60) + sOnM;
-
-        let sOffH = parseInt(newSOfStr.substring(0,2));
-        let sOffM = parseInt(newSOfStr.substring(2));
-        let sOffTotal = (sOffH * 60) + sOffM;
+    if (val.length === 4) {
+        const startMins = (parseInt(row.sOn.substring(0,2)) * 60) + parseInt(row.sOn.substring(2));
+        let endMins = (parseInt(val.substring(0,2)) * 60) + parseInt(val.substring(2));
+        if (endMins < startMins) endMins += 1440;
         
-        // Handle next-day sign-off
-        if (sOffTotal < sOnTotal) sOffTotal += 1440; 
+        const newTotalDuty = endMins - startMins;
+        const newD60 = newTotalDuty * 0.6;
         
-        const newTotalDuty = sOffTotal - sOnTotal;
-        const newDpc60 = newTotalDuty * 0.6;
+        const baselinePay = Math.max(row.credit, row.origD60);
+        const simulatedPay = Math.max(row.credit, newD60);
+        const diff = Math.max(0, simulatedPay - baselinePay);
         
-        // PAY LOGIC: Current pay is the higher of original credit or original 0.6 duty
-        const currentPaidMins = Math.max(row.creditMins, row.origD60);
-        
-        // New pay is the higher of original credit or NEW simulated 0.6 duty
-        const simulatedPaidMins = Math.max(row.creditMins, newDpc60);
-        
-        // Extra is the difference
-        const extraMins = Math.max(0, simulatedPaidMins - currentPaidMins);
-        
-        const extraGross = (extraMins / 60) * hourly;
-        const extraNet = extraGross * (1 - tax);
-
-        document.getElementById(`new100-${id}`).innerText = minsToTime(newTotalDuty);
-        document.getElementById(`newD60-${id}`).innerText = minsToTime(newDpc60);
-        document.getElementById(`gross-${id}`).innerText = "$" + extraGross.toFixed(2);
-        document.getElementById(`net-${id}`).innerText = "$" + extraNet.toFixed(2);
-    } else {
-        document.getElementById(`new100-${id}`).innerText = "-";
-        document.getElementById(`newD60-${id}`).innerText = "-";
-        document.getElementById(`gross-${id}`).innerText = "$0.00";
-        document.getElementById(`net-${id}`).innerText = "$0.00";
+        const gross = (diff / 60) * rate;
+        document.getElementById(`d100-${id}`).innerText = formatTime(newTotalDuty);
+        document.getElementById(`d60-${id}`).innerText = formatTime(newD60);
+        document.getElementById(`gr-${id}`).innerText = "$" + gross.toFixed(2);
+        document.getElementById(`net-${id}`).innerText = "$" + (gross * (1 - tax)).toFixed(2);
     }
 }
 
-function updateAll() {
-    rosterData.forEach(row => runSim(row.id));
-}
+function updateAll() { rosterData.forEach(r => run(r.id)); }
 </script>
 </body>
 </html>
