@@ -1,50 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Qantas Pay Simulator - Fixed Focus</title>
+    <title>Qantas Pay Simulator - Full Duty & Delay Logic</title>
     <style>
         body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; }
-        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1400px; margin: auto; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1500px; margin: auto; }
         h2 { color: #e21b22; margin-top: 0; border-bottom: 2px solid #e21b22; padding-bottom: 10px; }
         
         .controls { display: flex; gap: 20px; background: #fff5f5; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffcfcf; align-items: center; }
         .input-group { display: flex; flex-direction: column; }
         input[type="number"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         
-        textarea { width: 100%; height: 120px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: monospace; box-sizing: border-box; }
+        textarea { width: 100%; height: 100px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: monospace; box-sizing: border-box; }
         button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px; }
         
-        table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; font-size: 12px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 11px; }
+        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
 
-        /* Highlight Logic */
-        .margin-green { background-color: #dcfce7 !important; font-weight: bold; } /* Margin 0 */
-        .margin-amber { background-color: #fef3c7 !important; font-weight: bold; } /* Margin > 0 */
+        .margin-green { background-color: #dcfce7 !important; font-weight: bold; } 
+        .margin-amber { background-color: #fef3c7 !important; font-weight: bold; } 
         
-        /* Column Colors */
-        .extra-gross { color: #000000 !important; font-weight: bold; } /* Black */
-        .extra-net { color: #22c55e !important; font-weight: bold; }   /* Green */
+        .extra-gross { color: #000000 !important; font-weight: bold; } 
+        .extra-net { color: #22c55e !important; font-weight: bold; }   
         
-        .adj-input { width: 70px; padding: 5px; border: 2px solid #e21b22; border-radius: 4px; font-weight: bold; text-align: center; }
-        .row-data { font-family: monospace; }
+        .adj-input { width: 60px; padding: 5px; border: 2px solid #e21b22; border-radius: 4px; font-weight: bold; text-align: center; }
+        .duty-total { color: #4b5563; font-style: italic; }
     </style>
 </head>
 <body>
 <div class="card">
-    <h2>DPC60 Simulator & Pay Impact</h2>
+    <h2>DPC60 Simulator: 100% Duty & Delay Impact</h2>
     
     <div class="controls">
         <div class="input-group">
             <label>Hourly Rate ($)</label>
-            <input type="number" id="hourlyRate" value="353" oninput="updateAllSimulations()">
+            <input type="number" id="hourlyRate" value="353" oninput="updateAll()">
         </div>
         <div class="input-group">
             <label>Tax Rate (%)</label>
-            <input type="number" id="taxRate" value="47" oninput="updateAllSimulations()">
+            <input type="number" id="taxRate" value="47" oninput="updateAll()">
         </div>
         <div style="flex-grow: 1; font-size: 0.85em; color: #666;">
-            <b>Instructions:</b> Paste roster -> Click Analyze -> Type a new sign-off (e.g. 2130) in the red boxes to see immediate pay changes.
+            <b>100% Duty:</b> Shows total elapsed time (Sign-on to Sign-off). <br>
+            <b>Delay Logic:</b> Extra pay is only triggered if (New Duty x 0.6) exceeds your original Credit.
         </div>
     </div>
 
@@ -73,7 +72,6 @@ function processRoster() {
     const lines = text.split('\n');
     rosterData = [];
     
-    // Pattern matches: Date | S-On | S-Off | Duty | Credit
     const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
     lines.forEach((line, index) => {
@@ -101,22 +99,23 @@ function processRoster() {
 
 function renderFullTable() {
     let html = `<table><tr>
-        <th>Date</th><th>S-On</th><th>Roster S-Off</th><th>Credit</th><th>0.6 Duty</th><th>Margin to DPC60</th>
-        <th>New Sign-Off</th><th>New 0.6 Duty</th><th>Extra (Gross)</th><th>Extra (Net)</th>
+        <th>Date</th><th>S-On</th><th>Roster S-Off</th><th>100% Duty</th><th>Credit</th><th>0.6 Duty</th><th>Margin</th>
+        <th>New S-Off</th><th>New 100% Duty</th><th>New 0.6 Duty</th><th>Extra (Gross)</th><th>Extra (Net)</th>
     </tr>`;
 
     rosterData.forEach(row => {
-        // Apply Margin Highlighting (Rostered)
         let marginClass = row.margin <= 0.5 ? "margin-green" : "margin-amber";
         
-        html += `<tr class="row-data">
+        html += `<tr>
             <td>${row.date}</td>
             <td>${row.sOn}</td>
             <td>${row.origSOf}</td>
+            <td class="duty-total">${minsToTime(row.origDutyMins)}</td>
             <td>${minsToTime(row.creditMins)}</td>
             <td>${minsToTime(row.origD60)}</td>
             <td class="${marginClass}">${minsToTime(row.margin)}</td>
             <td><input type="text" maxlength="4" class="adj-input" id="input-${row.id}" oninput="runSim(${row.id})" placeholder="----"></td>
+            <td id="new100-${row.id}">-</td>
             <td id="newD60-${row.id}">-</td>
             <td id="gross-${row.id}" class="extra-gross">$0.00</td>
             <td id="net-${row.id}" class="extra-net">$0.00</td>
@@ -129,40 +128,40 @@ function renderFullTable() {
 function runSim(id) {
     const row = rosterData.find(r => r.id === id);
     const inputEl = document.getElementById(`input-${id}`);
-    const newSOf = inputEl.value;
+    const newSOfStr = inputEl.value;
 
     const hourly = parseFloat(document.getElementById('hourlyRate').value) || 0;
     const tax = (parseFloat(document.getElementById('taxRate').value) || 0) / 100;
 
-    if (newSOf.length === 4) {
+    if (newSOfStr.length === 4) {
         const sOnMin = (parseInt(row.sOn.substring(0,2)) * 60) + parseInt(row.sOn.substring(2));
-        let sOffMin = (parseInt(newSOf.substring(0,2)) * 60) + parseInt(newSOf.substring(2));
+        let sOffMin = (parseInt(newSOfStr.substring(0,2)) * 60) + parseInt(newSOfStr.substring(2));
         
-        if (sOffMin < sOnMin) sOffMin += 1440; // Handle midnight cross
+        if (sOffMin < sOnMin) sOffMin += 1440; 
         
-        const newDuty = sOffMin - sOnMin;
-        const newDpc60 = newDuty * 0.6;
+        const newTotalDuty = sOffMin - sOnMin;
+        const newDpc60 = newTotalDuty * 0.6;
         
-        // Calculation logic
-        const originalPaidMins = Math.max(row.creditMins, row.origD60);
+        const currentPaidMins = Math.max(row.creditMins, row.origD60);
         const newPaidMins = Math.max(row.creditMins, newDpc60);
-        const extraMins = Math.max(0, newPaidMins - originalPaidMins);
+        const extraMins = Math.max(0, newPaidMins - currentPaidMins);
         
         const extraGross = (extraMins / 60) * hourly;
         const extraNet = extraGross * (1 - tax);
 
-        // Targeted Updates (Preserves Focus)
+        document.getElementById(`new100-${id}`).innerText = minsToTime(newTotalDuty);
         document.getElementById(`newD60-${id}`).innerText = minsToTime(newDpc60);
         document.getElementById(`gross-${id}`).innerText = "$" + extraGross.toFixed(2);
         document.getElementById(`net-${id}`).innerText = "$" + extraNet.toFixed(2);
     } else {
+        document.getElementById(`new100-${id}`).innerText = "-";
         document.getElementById(`newD60-${id}`).innerText = "-";
         document.getElementById(`gross-${id}`).innerText = "$0.00";
         document.getElementById(`net-${id}`).innerText = "$0.00";
     }
 }
 
-function updateAllSimulations() {
+function updateAll() {
     rosterData.forEach(row => runSim(row.id));
 }
 </script>
