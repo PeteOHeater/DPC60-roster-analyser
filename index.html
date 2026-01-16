@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qantas SH Pay Calculator</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; max-width: 900px; margin: auto; background: #f4f4f4; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 200px; margin-bottom: 10px; font-family: monospace; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #e21b22; color: white; }
+        .highlight { background-color: #d4edda; font-weight: bold; }
+        .duty-pay { color: #856404; background-color: #fff3cd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Crew Roster Pay Identifier</h2>
+        <p>Paste your roster text (e.g., webCisRoster content) below:</p>
+        <textarea id="rosterInput" placeholder="Paste roster text here..."></textarea>
+        <button onclick="calculatePay()">Analyze Roster</button>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function timeToMinutes(timeStr) {
+            if (!timeStr) return 0;
+            const [hrs, mins] = timeStr.split(':').map(Number);
+            return (hrs * 60) + mins;
+        }
+
+        function minutesToTime(totalMin) {
+            const hrs = Math.floor(totalMin / 60);
+            const mins = Math.round(totalMin % 60);
+            return `${hrs}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        function calculatePay() {
+            const text = document.getElementById('rosterInput').value;
+            const lines = text.split('\n');
+            let output = '<table><tr><th>Date</th><th>Duty (H:M)</th><th>Roster Credit</th><th>0.6 x Duty</th><th>Status</th></tr>';
+
+            // Regex to find patterns with Duty and Credit
+            // Look for lines that contain a time format like "12:10   9:05"
+            const patternRegex = /(\d{2}[A-Z][a-z]{2})\s+.*?\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
+
+            lines.forEach(line => {
+                const match = line.match(patternRegex);
+                if (match) {
+                    const date = match[1];
+                    const dutyStr = match[2];
+                    const creditStr = match[3];
+
+                    const dutyMin = timeToMinutes(dutyStr);
+                    const creditMin = timeToMinutes(creditStr);
+                    const dutyPointSix = dutyMin * 0.6;
+
+                    const isDutyHigher = dutyPointSix > creditMin;
+                    const rowClass = isDutyHigher ? 'class="duty-pay"' : '';
+                    const status = isDutyHigher ? 'Paid 0.6 Duty' : 'Paid Credit';
+
+                    output += `<tr ${rowClass}>
+                        <td>${date}</td>
+                        <td>${dutyStr}</td>
+                        <td>${creditStr}</td>
+                        <td>${minutesToTime(dutyPointSix)}</td>
+                        <td>${status}</td>
+                    </tr>`;
+                }
+            });
+
+            output += '</table>';
+            document.getElementById('results').innerHTML = output;
+        }
+    </script>
+</body>
+</html>
