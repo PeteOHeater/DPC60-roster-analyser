@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Qantas DPC60 Master Simulator</title>
+    <title>Qantas DPC60 Simulator - Delta Logic</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; background: #f0f2f5; color: #1a1a1a; }
+        body { font-family: -apple-system, sans-serif; padding: 20px; background: #f0f2f5; }
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 1600px; margin: auto; }
         h2 { color: #e21b22; margin-top: 0; border-bottom: 2px solid #e21b22; padding-bottom: 10px; }
         .controls { display: flex; gap: 20px; background: #fff5f5; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #ffcfcf; align-items: center; }
@@ -11,10 +11,10 @@
         input[type="number"], input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         textarea { width: 100%; height: 100px; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-family: monospace; box-sizing: border-box; }
         button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 25px; background: white; font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 25px; font-size: 12px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
         th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
-        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; border: 1px solid #fecaca; } 
+        .margin-red { background-color: #fee2e2 !important; color: #b91c1c !important; font-weight: bold; } 
         .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } 
         .extra-gross { color: #000000 !important; font-weight: bold; } 
         .extra-net { color: #16a34a !important; font-weight: bold; }   
@@ -23,13 +23,13 @@
 </head>
 <body>
 <div class="card">
-    <h2>DPC60 Master Simulator</h2>
+    <h2>DPC60 Simulator: Delta-Based Calculation</h2>
     <div class="controls">
         <div class="input-group"><label>Hourly Rate ($)</label><input type="number" id="hourlyRate" value="353" oninput="updateAll()"></div>
         <div class="input-group"><label>Tax Rate (%)</label><input type="number" id="taxRate" value="47" oninput="updateAll()"></div>
         <div style="flex-grow: 1; font-size: 0.85em; color: #666;">
-            <b>Math Logic:</b> New Duty = (New Sign Off - Sign On). <br>
-            <b>Pay Trigger:</b> Extra Pay = Max(Credit, New Duty * 0.6) - Max(Credit, Rostered Duty * 0.6).
+            <b>Updated Logic:</b> New Duty = Rostered Duty + (New Sign Off - Original Sign Off). <br>
+            This preserves the pre/post flight buffers built into your rostered duty hours.
         </div>
     </div>
     <textarea id="rosterInput" placeholder="Paste daily roster here..."></textarea>
@@ -55,6 +55,7 @@ function processRoster() {
     const text = document.getElementById('rosterInput').value;
     const lines = text.split('\n');
     rosterData = [];
+    // Date, S-On, S-Of, Duty, Credit
     const lineRegex = /^(\d{2}\s[A-Za-z]{3})\s+.*?\s+(\d{4})\s+(\d{4})\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/;
 
     lines.forEach((line, index) => {
@@ -93,11 +94,15 @@ function run(id) {
     const tax = (parseFloat(document.getElementById('taxRate').value) || 0) / 100;
 
     if (val.length === 4) {
-        const startMins = (parseInt(row.sOn.substring(0,2)) * 60) + parseInt(row.sOn.substring(2));
-        let endMins = (parseInt(val.substring(0,2)) * 60) + parseInt(val.substring(2));
-        if (endMins < startMins) endMins += 1440;
+        // Calculate the difference between New Sign Off and Original Sign Off
+        const origSOfMins = (parseInt(row.origSOf.substring(0,2)) * 60) + parseInt(row.origSOf.substring(2));
+        let newSOfMins = (parseInt(val.substring(0,2)) * 60) + parseInt(val.substring(2));
         
-        const newTotalDuty = endMins - startMins;
+        // Handle next-day crossing for the delta
+        if (newSOfMins < origSOfMins - 600) newSOfMins += 1440; 
+        
+        const delta = newSOfMins - origSOfMins;
+        const newTotalDuty = row.origDuty + delta;
         const newD60 = newTotalDuty * 0.6;
         
         const baselinePay = Math.max(row.credit, row.origD60);
@@ -111,7 +116,6 @@ function run(id) {
         document.getElementById(`net-${id}`).innerText = "$" + (gross * (1 - tax)).toFixed(2);
     }
 }
-
 function updateAll() { rosterData.forEach(r => run(r.id)); }
 </script>
 </body>
