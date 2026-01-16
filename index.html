@@ -13,12 +13,12 @@
         button { background: #e21b22; color: white; border: none; padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px; margin-top: 10px; }
         table { width: 100%; border-collapse: collapse; margin-top: 25px; font-size: 12px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; }
+        th { background: #f8f9fa; color: #555; text-transform: uppercase; font-size: 10px; line-height: 1.2; }
         
         /* Highlighting Logic */
-        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } /* Margin is 0 */
-        .margin-blue { background-color: #dbeafe !important; color: #1e40af !important; font-weight: bold; }  /* Credit < .6 Duty */
-        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } /* Credit > .6 Duty */
+        .margin-green { background-color: #dcfce7 !important; color: #166534 !important; font-weight: bold; } 
+        .margin-blue { background-color: #dbeafe !important; color: #1e40af !important; font-weight: bold; }  
+        .margin-amber { background-color: #fffbeb !important; color: #92400e !important; font-weight: bold; } 
         
         .extra-gross { color: #000000 !important; font-weight: bold; } 
         .extra-net { color: #16a34a !important; font-weight: bold; }   
@@ -54,7 +54,6 @@ function formatTime(m) {
 
 function getMarginClass(credit, d60) {
     const diff = credit - d60;
-    // Using a 0.5 minute threshold for floating point rounding
     if (Math.abs(diff) <= 0.5) return "margin-green";
     if (credit < d60) return "margin-blue";
     return "margin-amber";
@@ -82,7 +81,22 @@ function processRoster() {
 }
 
 function renderTable() {
-    let html = `<table><tr><th>Date</th><th>S-On</th><th>Roster S-Off</th><th>Duty</th><th>Credit</th><th>.6 Duty</th><th>Margin</th><th>New S-Off</th><th>New Duty</th><th>New .6</th><th>Extra Gross</th><th>Extra Net</th></tr>`;
+    // UPDATED COLUMN TITLE BELOW
+    let html = `<table><tr>
+        <th>Date</th>
+        <th>S-On</th>
+        <th>Roster S-Off</th>
+        <th>Duty</th>
+        <th>Credit</th>
+        <th>.6 Duty</th>
+        <th>Margin Between .6 Duty and Credit Hour</th>
+        <th>New S-Off</th>
+        <th>New Duty</th>
+        <th>New .6</th>
+        <th>Extra Gross</th>
+        <th>Extra Net</th>
+    </tr>`;
+
     rosterData.forEach(row => {
         const mClass = getMarginClass(row.credit, row.origD60);
         const marginVal = Math.abs(row.credit - row.origD60);
@@ -117,7 +131,6 @@ function run(id) {
         
         const gross = (diff / 60) * rate;
         
-        // Update Margin Highlighting for Simulation
         const marginEl = document.getElementById(`in-${id}`).parentElement.parentElement.cells[6];
         marginEl.className = getMarginClass(row.credit, newD60);
         marginEl.innerText = formatTime(Math.abs(row.credit - newD60));
